@@ -1,0 +1,67 @@
+server:
+  port: 9015
+
+spring:
+  application:
+    name: stats-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+    # Feign 熔断降级 + 超时（OpenFeign 4.x 配置前缀为 spring.cloud.openfeign）
+    openfeign:
+      circuitbreaker:
+        enabled: true
+      client:
+        config:
+          default:
+            connect-timeout: 2000
+            read-timeout: 3000
+  datasource:
+    # 统计服务独立库 stats_db（按服务拆库）
+    url: jdbc:mysql://localhost:3307/stats_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: root123
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+rocketmq:
+  name-server: localhost:9876
+  # 仅作为消费者订阅工单事件，不主动发消息；starter 仍要求配置生产者组
+  producer:
+    group: stats-producer-group
+    send-message-timeout: 5000
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    # 开发期打印 SQL，方便联调排查；上线前关闭
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    banner: false
+
+# 熔断器参数：看板依赖失败时快速降级（主动断言 10 次里失败过半就打开）
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+
+# knife4j 接口文档
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn

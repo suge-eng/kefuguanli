@@ -1,0 +1,67 @@
+server:
+  port: 9013
+
+spring:
+  application:
+    name: workbench-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+    # Feign 熔断降级 + 超时（OpenFeign 4.x 配置前缀为 spring.cloud.openfeign）
+    openfeign:
+      circuitbreaker:
+        enabled: true
+      client:
+        config:
+          default:
+            connect-timeout: 3000
+            read-timeout: 5000
+          # AI 生成草稿要跑大模型（当前模型单次约 20~30 秒），单独放宽读超时，
+          # 其余下游（工单中心）仍用 5 秒，避免一次慢调用拖垮所有接口
+          ai-service:
+            connect-timeout: 3000
+            read-timeout: 60000
+  servlet:
+    multipart:
+      # 工单凭证图片大小限制，超出直接拒绝避免打爆带宽
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+# MinIO 对象存储（附件桶由 MinioConfig 启动时自动创建）
+minio:
+  endpoint: http://localhost:9000
+  access-key: minioadmin
+  secret-key: minioadmin123
+  bucket: work-order-attachment
+
+# 熔断器参数：10 次滑动窗口内失败率过半就打开，10 秒后放3个请求试探恢复
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+  # TimeLimiter 兜底超时：Spring Cloud CircuitBreaker 集成的 Resilience4j 默认只有 1 秒，
+  # 会把真实大模型调用（20~30 秒）误判成超时降级；这里放宽到 70 秒，
+  # 实际先由 Feign 读超时（AI 60 秒 / 工单中心 5 秒）生效
+  timelimiter:
+    configs:
+      default:
+        timeout-duration: 70s
+        cancel-running-future: true
+
+# knife4j 接口文档
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn

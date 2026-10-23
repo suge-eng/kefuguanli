@@ -1,0 +1,70 @@
+:root {
+  --app-primary: #2563eb;
+  --app-bg: #f5f7fa;
+  --app-card-border: #ebeef5;
+  --app-sider-bg: #1f2937;
+  --app-sider-text: #cbd5e1;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #app { height: 100%; margin: 0; }
+
+body {
+  font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  background: var(--app-bg);
+  color: #1f2937;
+  font-size: 14px;
+}
+
+/* 统一卡片观感：白底 + 细边框 + 8px 圆角，去掉默认重阴影 */
+.el-card {
+  border-radius: 8px !important;
+  border: 1px solid var(--app-card-border) !important;
+  box-shadow: none !important;
+}
+
+.page-wrap { padding: 16px 20px 24px; }
+
+.card + .card { margin-top: 16px; }
+
+.card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+}
+
+.muted { color: #6b7280; }
+.mono { font-family: Consolas, Monaco, monospace; }
+
+/* 表格：取消斑马纹，悬停浅蓝，表头浅灰 */
+.el-table th.el-table__cell { background: #fafafa !important; color: #4b5563; font-weight: 600; }
+.el-table tr:hover > td.el-table__cell { background: #f0f7ff !important; }
+
+.json-block {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: Consolas, Monaco, monospace;
+  font-size: 12px;
+  color: #334155;
+  margin: 0;
+}
+
+.content-block {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 12px 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+.pager { display: flex; justify-content: flex-end; margin-top: 14px; }

@@ -1,0 +1,53 @@
+server:
+  port: 9010   # 9000 被宿主机已有进程占用
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+    gateway:
+      discovery:
+        locator:
+          enabled: false   # 关闭自动路由，显式配置更安全可控
+      # 全局限流：默认过滤器对所有路由生效，无需逐条重复配置
+      # 令牌桶存 Redis，多网关实例共享同一份计数（单机用 Redis 也便于重启后不清零）
+      default-filters:
+        - name: RequestRateLimiter
+          args:
+            redis-rate-limiter.replenishRate: ${GATEWAY_RATE_REPLENISH:50}    # 每秒补充令牌数=稳定QPS
+            redis-rate-limiter.burstCapacity: ${GATEWAY_RATE_BURST:100}       # 桶容量=允许的瞬时峰值
+            redis-rate-limiter.requestedTokens: 1                             # 每个请求消耗令牌数
+            key-resolver: "#{@ipKeyResolver}"
+      routes:
+        - id: work-order-service
+          uri: lb://work-order-service
+          predicates:
+            - Path=/work-order/**
+        - id: dispatch-service
+          uri: lb://dispatch-service
+          predicates:
+            - Path=/dispatch/**
+        - id: workbench-service
+          uri: lb://workbench-service
+          predicates:
+            - Path=/workbench/**
+        - id: ai-service
+          uri: lb://ai-service
+          predicates:
+            - Path=/ai/**
+        - id: stats-service
+          uri: lb://stats-service
+          predicates:
+            - Path=/stats/**
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+# 网关自身的日志级别（排障路由/限流时打开 debug）
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO

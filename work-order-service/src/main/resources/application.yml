@@ -1,0 +1,50 @@
+server:
+  port: 9011   # 9001 被宿主机已有进程占用，9011 起为本项目服务段
+
+spring:
+  application:
+    name: work-order-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+  datasource:
+    # 容器 MySQL 映射在宿主机 3307 端口
+    url: jdbc:mysql://localhost:3307/work_order_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: root123
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+rocketmq:
+  name-server: localhost:9876
+  producer:
+    group: work-order-producer-group
+    send-message-timeout: 5000
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    # 开发期打印 SQL，方便联调排查；上线前关闭
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    banner: false
+
+# 第一阶段开关：模拟 AI 结构化消费者，跑通 MQ 全链路；
+# 第三阶段 ai-service 的结构化 Agent 已上线，置为 false 由 AI 服务接管，避免重复消费
+workorder:
+  mock-structure-enabled: false
+
+# knife4j 接口文档
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn

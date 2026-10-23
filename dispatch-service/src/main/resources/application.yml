@@ -1,0 +1,72 @@
+server:
+  port: 9012
+
+spring:
+  application:
+    name: dispatch-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+    # Feign 熔断降级 + 超时（OpenFeign 4.x 配置前缀为 spring.cloud.openfeign）
+    openfeign:
+      circuitbreaker:
+        enabled: true
+      client:
+        config:
+          default:
+            connect-timeout: 3000
+            read-timeout: 5000
+  datasource:
+    # 派单服务独立库 dispatch_db（按服务拆库，避免跨服务共享表）
+    url: jdbc:mysql://localhost:3307/dispatch_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: root123
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+rocketmq:
+  name-server: localhost:9876
+  producer:
+    group: dispatch-producer-group
+    send-message-timeout: 5000
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    # 开发期打印 SQL，方便联调排查；上线前关闭
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    banner: false
+
+# 派单超时检查的延时消息等级：16=30分钟（RocketMQ 固定档位），即派单30分钟未领取自动转派
+# 联调验证超时转派时可临时改为 5（1分钟），验证完记得改回
+dispatch:
+  timeout-check-delay-level: 16
+
+# Feign 熔断降级：工单中心不可用时回写走 fallback，异常抛出交给 MQ 重投
+# 熔断器参数：10 次滑动窗口内失败率过半就打开，10 秒后放3个请求试探恢复
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+
+# knife4j 接口文档
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn

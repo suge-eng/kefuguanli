@@ -1,0 +1,186 @@
+name: after-sales-infra
+
+# ============================================================
+# 智能售后工单系统 - 中间件基础设施
+# 包含：MySQL / Redis / Nacos / RocketMQ / MinIO / Milvus(etcd)
+# 所有服务端口均映射到 localhost，业务微服务在宿主机 IDE 中运行
+# ============================================================
+
+services:
+  # ---------------- MySQL 8 ----------------
+  mysql:
+    image: mysql:8.0
+    container_name: as-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      TZ: Asia/Shanghai
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3307:3306"   # 宿主机 3306 被本地 MySQL 占用，对外暴露 3307
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 首次启动自动执行建库建表脚本
+      - ./mysql/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-proot123" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  # ---------------- Redis 7 ----------------
+  redis:
+    image: redis:7-alpine
+    container_name: as-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # ---------------- Nacos（注册中心 + 配置中心，单机版） ----------------
+  nacos:
+    # 镜像走 DaoCloud 代理（Docker Hub 直连超时，且 geo4 容器在运行不便重启 Docker 引擎）
+    image: docker.m.daocloud.io/nacos/nacos-server:v2.4.3
+    container_name: as-nacos
+    environment:
+      MODE: standalone
+      NACOS_AUTH_ENABLE: "false"
+      JVM_XMS: 256m
+      JVM_XMX: 256m
+    ports:
+      - "8848:8848"   # HTTP
+      - "9848:9848"   # gRPC（Spring Cloud Alibaba 2.x 客户端必需）
+    restart: unless-stopped
+
+  # ---------------- RocketMQ NameServer ----------------
+  # 服务端版本 5.3.0：与 Java 端 rocketmq-client 5.3.0 对齐，
+  # 避免 4.9.7 服务端 + 5.3.0 客户端的消费兼容问题（消息不投递）
+  rocketmq-nameserver:
+    image: docker.m.daocloud.io/apache/rocketmq:5.3.0
+    container_name: as-rocketmq-nameserver
+    user: root
+    environment:
+      JAVA_OPT_EXT: "-Xms256m -Xmx256m -Xmn128m"
+    command: sh mqnamesrv
+    ports:
+      - "9876:9876"
+    restart: unless-stopped
+
+  # ---------------- RocketMQ Broker ----------------
+  rocketmq-broker:
+    image: docker.m.daocloud.io/apache/rocketmq:5.3.0
+    container_name: as-rocketmq-broker
+    # 以 root 运行：数据卷挂载点默认为 root 属主，镜像内的 rocketmq 用户
+    # 无法在 store 目录创建 lock 文件（Permission denied）导致 broker 启动即退出
+    user: root
+    environment:
+      JAVA_OPT_EXT: "-Xms256m -Xmx256m -Xmn128m"
+      NAMESRV_ADDR: rocketmq-nameserver:9876
+    command: sh mqbroker -n rocketmq-nameserver:9876 -c /home/rocketmq/rocketmq-5.3.0/conf/broker.conf
+    depends_on:
+      - rocketmq-nameserver
+    volumes:
+      - ./rocketmq/broker.conf:/home/rocketmq/rocketmq-5.3.0/conf/broker.conf
+      - rocketmq-store-v5:/home/rocketmq/store
+    ports:
+      - "10911:10911"
+      - "10909:10909"
+    restart: unless-stopped
+
+  # ---------------- RocketMQ 控制台 ----------------
+  rocketmq-dashboard:
+    image: docker.m.daocloud.io/apacherocketmq/rocketmq-dashboard:1.0.0
+    container_name: as-rocketmq-dashboard
+    environment:
+      JAVA_OPTS: "-Drocketmq.namesrv.addr=rocketmq-nameserver:9876 -Dserver.port=8080"
+    depends_on:
+      - rocketmq-nameserver
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  # ---------------- MinIO（工单附件 + Milvus 数据共用） ----------------
+  minio:
+    image: minio/minio:latest
+    container_name: as-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"   # S3 API
+      - "9002:9001"   # 控制台（宿主机 9001 被占用，映射到 9002）
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: [ "CMD", "mc", "ready", "local" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # 说明：原计划用 minio/mc 初始化桶，但镜像源对该仓库 403，改为：
+  # 1. Milvus 启动时会自动创建所需 bucket（minio chunk manager 的默认行为）
+  # 2. 业务附件桶 work-order-attachment 由 workbench-service 的 MinIO 配置 Bean 启动时自动创建
+
+  # ---------------- etcd（Milvus 依赖，仅容器内访问） ----------------
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.14
+    container_name: as-etcd
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    volumes:
+      - etcd-data:/etcd
+    healthcheck:
+      test: [ "CMD", "etcdctl", "endpoint", "health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # ---------------- Milvus 向量库（单机版） ----------------
+  milvus:
+    image: docker.m.daocloud.io/milvusdb/milvus:v2.5.4
+    container_name: as-milvus
+    command: [ "milvus", "run", "standalone" ]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY_ID: minioadmin
+      MINIO_SECRET_ACCESS_KEY: minioadmin123
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    ports:
+      - "19530:19530"  # SDK 访问端口
+      - "9091:9091"    # 健康检查/metrics
+    volumes:
+      - milvus-data:/var/lib/milvus
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9091/healthz" ]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  mysql-data:
+  redis-data:
+  rocketmq-store-v5:
+  minio-data:
+  etcd-data:
+  milvus-data:
