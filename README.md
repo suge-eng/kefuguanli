@@ -91,7 +91,7 @@ docker compose up -d
 
 ### 2. 配置大模型密钥
 
-`ai-service` 通过环境变量读取密钥（**不要把真实 Key 写进配置文件**）：
+`ai-service` 通过环境变量读取密钥：
 
 ```powershell
 # Windows PowerShell（写入用户级环境变量，需重新打开终端生效）
@@ -195,6 +195,6 @@ curl -X POST http://localhost:9010/work-order/create \
 
 ## 八、说明与限制
 
-- 项目定位为学习与面试演示，**未接入登录鉴权**：前端通过顶栏切换客服身份模拟登录态
+- 项目**未接入登录鉴权**：前端通过顶栏切换客服身份模拟登录态
 - 中间件口令（MySQL / MinIO）为演示默认值，生产部署请改为环境变量注入
 - 大模型与向量模型需要有效 API Key；无 Key 时可用 Mock 模式完整体验流程
